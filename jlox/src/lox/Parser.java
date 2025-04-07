@@ -22,7 +22,34 @@ public class Parser {
     }
 
     private Expr expression() {
-        return equality();
+        return comma();
+    }
+
+    // comma -> equality ( "," equality )* ;
+    private Expr comma() {
+        Expr expr = conditional();
+
+        while (match(COMMA)) {
+            Token operator = previous();
+            Expr right = conditional();
+            expr = new Expr.Binary(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    // conditional -> equality ( "?" expression ":" conditional )? ;
+    private Expr conditional() {
+        Expr expr = equality();
+
+        if (match(QUESTION)) {
+            Expr thenBranch = expression();
+            consume(COLON, "Expect ':' after then branch of conditional expression.");
+            Expr elseBranch = conditional();
+            expr = new Expr.Conditional(expr, thenBranch, elseBranch);
+        }
+
+        return expr;
     }
 
     // equality -> comparison ( ( "!=" | "==" ) comparison )* ;
@@ -33,6 +60,7 @@ public class Parser {
             Expr right = comparison();
             expr = new Expr.Binary(expr, operator, right);
         }
+
         return expr;
     }
 
@@ -98,11 +126,36 @@ public class Parser {
 
         if (match(LEFT_PAREN)) {
             Expr expr = expression();
-            consume(RIGHT_PAREN, "expect ')' after expression.");
+            consume(RIGHT_PAREN, "Expect ')' after expression.");
             return new Expr.Grouping(expr);
         }
 
-        throw error(peek(), "Expect expression");
+        // Error productions.
+        if (match(BANG_EQUAL, EQUAL_EQUAL)) {
+            error(previous(), "Missing left-hand operand.");
+            equality();
+            return null;
+        }
+
+        if (match(GREATER, GREATER_EQUAL, LESS, LESS_EQUAL)) {
+            error(previous(), "Missing left-hand operand.");
+            comparison();
+            return null;
+        }
+
+        if (match(PLUS)) {
+            error(previous(), "Missing left-hand operand.");
+            term();
+            return null;
+        }
+
+        if (match(SLASH, STAR)) {
+            error(previous(), "Missing left-hand operand.");
+            factor();
+            return null;
+        }
+
+        throw error(peek(), "Expect expression.");
     }
 
     // Check if current token has any of the given types/
