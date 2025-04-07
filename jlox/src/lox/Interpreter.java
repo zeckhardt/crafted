@@ -113,9 +113,16 @@ public class Interpreter implements Expr.Visitor<Object> {
                     return (String) left + (String) right;
                 }
 
+                if (left instanceof String && right instanceof Double) {
+                    return (String) left + right.toString();
+                }
+
                 throw new RuntimeError(expr.operator, "Operands must be two numbers or two strings.");
             case SLASH:
                 checkNumberOperands(expr.operator, left, right);
+                if ((double) right == 0) {
+                    throw new RuntimeError(expr.operator, "Divide by zero.");
+                }
                 return (double) left / (double) right;
             case STAR:
                 checkNumberOperands(expr.operator, left, right);
