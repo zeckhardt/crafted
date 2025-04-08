@@ -1,15 +1,15 @@
 package lox;
 
 abstract class Expr {
-    abstract <R> R accept(Visitor<R> visitor);
-
     interface Visitor<R> {
         R visitBinaryExpr(Binary expr);
         R visitGroupingExpr(Grouping expr);
         R visitLiteralExpr(Literal expr);
         R visitUnaryExpr(Unary expr);
         R visitConditionalExpr(Conditional expr);
+        R visitCommaExpr(Comma expr);
     }
+
     static class Binary extends Expr {
         Binary(Expr left, Token operator, Expr right) {
             this.left = left;
@@ -84,4 +84,21 @@ abstract class Expr {
         final Expr thenBranch;
         final Expr elseBranch;
     }
+
+    static class Comma extends Expr {
+        Comma(Expr left, Expr right) {
+            this.left = left;
+            this.right = right;
+        }
+
+        @Override
+        <R> R accept(Visitor<R> visitor) {
+            return visitor.visitCommaExpr(this);
+        }
+
+        final Expr left;
+        final Expr right;
+    }
+
+        abstract <R> R accept(Visitor<R> visitor);
 }
