@@ -10,6 +10,8 @@ abstract class Expr {
             R visitGroupingExpr(Grouping expr);
             R visitLiteralExpr(Literal expr);
             R visitLogicalExpr(Logical expr);
+            R visitConditionalExpr(Conditional expr);
+            R visitCommaExpr(Comma expr);
             R visitUnaryExpr(Unary expr);
             R visitVariableExpr(Variable expr);
       }
@@ -103,6 +105,38 @@ abstract class Expr {
 
         final Expr left;
         final Token operator;
+        final Expr right;
+    }
+
+    static class Conditional extends Expr {
+          Conditional(Expr condition, Expr thenBranch, Expr elseBranch) {
+              this.condition = condition;
+              this.thenBranch = thenBranch;
+              this.elseBranch = elseBranch;
+          }
+
+          @Override
+          <R> R accept(Visitor<R> visitor) {
+              return visitor.visitConditionalExpr(this);
+          }
+
+          final Expr condition;
+          final Expr thenBranch;
+          final Expr elseBranch;
+    }
+
+    static class Comma extends Expr {
+        Comma(Expr left, Expr right) {
+            this.left = left;
+            this.right = right;
+        }
+
+        @Override
+        <R> R accept(Visitor<R> visitor) {
+            return visitor.visitCommaExpr(this);
+        }
+
+        final Expr left;
         final Expr right;
     }
 

@@ -57,6 +57,23 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     }
 
     @Override
+    public Object visitCommaExpr(Expr.Comma expr) {
+        evaluate(expr.left);
+        return evaluate(expr.right);
+    }
+
+    @Override
+    public Object visitConditionalExpr(Expr.Conditional expr) {
+        Object conditionValue = evaluate(expr.condition);
+
+        if (isTruthy(conditionValue)) {
+            return evaluate(expr.thenBranch);
+        } else {
+            return evaluate(expr.elseBranch);
+        }
+    }
+
+    @Override
     public Object visitUnaryExpr(Expr.Unary expr) {
         Object right = evaluate(expr.right);
 
