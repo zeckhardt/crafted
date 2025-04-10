@@ -1,5 +1,6 @@
 package lox;
 
+import java.security.Key;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -10,7 +11,6 @@ public class Parser {
 
     private final List<Token> tokens;
     private int current = 0;
-    private int loopDepth = 0;
 
     Parser(List<Token> tokens) {
         this.tokens = tokens;
@@ -25,9 +25,10 @@ public class Parser {
         return statements;
     }
 
-    // declaration -> varDecl | statement ;
+    // declaration -> funDecl | varDecl | statement ;
     private Stmt declaration() {
         try {
+            if (match(FUN)) return function("function");
             if (match(VAR)) return varDeclaration();
             return statement();
         } catch (ParseError error) {
@@ -36,12 +37,37 @@ public class Parser {
         }
     }
 
-    // statement -> exprStmt | breakStmt | forStmt | ifStmt | printStmt | whileStmt | block ;
+    // funDecl -> "fun" function ;
+
+
+    // function -> IDENTIFIER "(" parameters? ")" block ;
+    private Stmt.Function function(String kind) {
+        Token name = consume(IDENTIFIER, "Expect " + kind + " name.");
+        consume(LEFT_PAREN, "Expect '(' after " + kind + " name.");
+        List<Token> parameters = new ArrayList<>();
+        if (!check(RIGHT_PAREN)) {
+            do {
+                if (parameters.size() >= 255) {
+                    error(peek(), "Can't have more than 255 parameters.");
+                }
+                parameters.add(consume(IDENTIFIER, "Expect parameter name."));
+            } while (match(COMMA));
+        }
+        consume(RIGHT_PAREN, "Expect ')' after parameters.");
+        consume(LEFT_BRACE, "Expect '{' before " + kind + "body.");
+        List<Stmt> body = block();
+        return new Stmt.Function(name, parameters, body);
+    }
+
+    // parameters -> IDENTIFIER ( "," IDENTIFIER )* ;
+
+
+    // statement -> exprStmt | forStmt | ifStmt | printStmt | whileStmt | returnStmt | block ;
     private Stmt statement() {
-        if (match(BREAK)) return breakStatement();
         if (match(FOR)) return forStatement();
         if (match(IF)) return ifStatement();
         if (match(PRINT)) return printStatement();
+        if (match(RETURN)) return returnStatement();
         if (match(WHILE)) return whileStatement();
         if (match(LEFT_BRACE)) return new Stmt.Block(block());
 
@@ -85,35 +111,21 @@ public class Parser {
         if (!check(RIGHT_PAREN)) {
             increment = expression();
         }
-        consume(RIGHT_PAREN, "Expect ')' after for clauses.");
-        try {
-            loopDepth++;
-            Stmt body = statement();
+        consume(RIGHT_PAREN, "Expect ')' after for clause.");
+        Stmt body = statement();
 
-            if (increment != null) {
-                body = new Stmt.Block(Arrays.asList(body, new Stmt.Expression(increment)));
-            }
-
-            if (condition == null) condition = new Expr.Literal(true);
-            body = new Stmt.While(condition, body);
-
-            if (initializer != null) {
-                body = new Stmt.Block(Arrays.asList(initializer, body));
-            }
-
-            return body;
-        } finally {
-            loopDepth --;
+        if (increment != null) {
+            body = new Stmt.Block(Arrays.asList(body, new Stmt.Expression(increment)));
         }
-    }
 
-    // breakStmt -> ;
-    private Stmt breakStatement() {
-        if (loopDepth == 0) {
-            error(previous(), "Must be inside a loop to use 'break'.");
+        if (condition == null) condition = new Expr.Literal(true);
+        body = new Stmt.While(condition, body);
+
+        if (initializer != null) {
+            body = new Stmt.Block(Arrays.asList(initializer, body));
         }
-        consume(SEMICOLON, "Expect ';' after 'break'.");
-        return new Stmt.Break();
+
+        return body;
     }
 
     // ifStmt -> "if" "(" expression ")" statement ( "else" statement )? ;
@@ -136,14 +148,21 @@ public class Parser {
         consume(LEFT_PAREN, "Expect '(' after 'while'.");
         Expr condition = expression();
         consume(RIGHT_PAREN, "Expect ')' after condition.");
-        try {
-            loopDepth++;
-            Stmt body = statement();
+        Stmt body = statement();
 
-            return new Stmt.While(condition, body);
-        } finally {
-            loopDepth--;
+        return new Stmt.While(condition, body);
+    }
+
+    // returnStmt -> "return" expression? ";" ;
+    private Stmt returnStatement() {
+        Token keyword = previous();
+        Expr value = null;
+        if (!check(SEMICOLON)) {
+            value = expression();
         }
+
+        consume(SEMICOLON, "Expect ';' after return value.");
+        return new Stmt.Return(keyword, value);
     }
 
     // block -> "{" declaration* "}" ;
@@ -171,9 +190,36 @@ public class Parser {
         return new Stmt.Var(name, initializer);
     }
 
-    // expression -> assignment
+    // expression -> comma ;
     private Expr expression() {
-        return assignment();
+        return comma();
+    }
+
+    // comma -> conditional ( "," conditional )* ;
+    private Expr comma() {
+        Expr expr = conditional();
+
+        while (match(COMMA)) {
+            Token operator = previous();
+            Expr right = conditional();
+            expr = new Expr.Binary(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    // conditional -> assignment ( "?" expression ":" conditional )? ;
+    private Expr conditional() {
+        Expr expr = assignment();
+
+        if (match(QUESTION)) {
+            Expr thenBranch = expression();
+            consume(COLON, "Expect ':' after then branch of conditional expression");
+            Expr elseBranch = conditional();
+            expr = new Expr.Conditional(expr, thenBranch, elseBranch);
+        }
+
+        return expr;
     }
 
     // assignment -> IDENTIFIER "=" assignment | logic_or ;
@@ -271,7 +317,7 @@ public class Parser {
         return expr;
     }
 
-    // unary -> ( "!" | "-" ) unary | primary ;
+    // unary -> ( "!" | "-" ) unary | call ;
     private Expr unary() {
         if (match(BANG, MINUS)) {
             Token operator = previous();
@@ -279,8 +325,40 @@ public class Parser {
             return new Expr.Unary(operator, right);
         }
 
-        return primary();
+        return call();
     }
+
+    // call -> primary ( "(" arguments? ")" )* ;
+    private Expr call() {
+        Expr expr = primary();
+
+        while (true) {
+            if (match(LEFT_PAREN)) {
+                expr = finishCall(expr);
+            } else {
+                break;
+            }
+        }
+
+        return expr;
+    }
+
+    // arguments -> expression ( "," expression )* ;
+    private Expr finishCall(Expr callee) {
+        List<Expr> arguments = new ArrayList<>();
+        if (!check(RIGHT_PAREN)) {
+            do {
+                if (arguments.size() >= 8) {
+                    error(peek(), "Can't have more than 8 arguments.");
+                }
+                arguments.add(equality()); // <-- was expression().
+            } while (match(COMMA));
+        }
+
+        Token paren = consume(RIGHT_PAREN, "Expect ')' after arguments");
+        return new Expr.Call(callee, paren, arguments);
+    }
+
 
     // primary -> NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER ;
     private Expr primary() {
@@ -302,7 +380,32 @@ public class Parser {
             return new Expr.Grouping(expr);
         }
 
-        throw error(peek(), "Expect expression");
+        // Error productions.
+        if (match(BANG_EQUAL, EQUAL_EQUAL)) {
+            error(previous(), "Missing left-hand operand.");
+            equality();
+            return null;
+        }
+
+        if (match(GREATER, GREATER_EQUAL, LESS, LESS_EQUAL)) {
+            error(previous(), "Missing left-hand operand.");
+            comparison();
+            return null;
+        }
+
+        if (match(PLUS)) {
+            error(previous(), "Missing left-hand operand.");
+            term();
+            return null;
+        }
+
+        if (match(SLASH, STAR)) {
+            error(previous(), "Missing left-hand operand.");
+            factor();
+            return null;
+        }
+
+        throw error(peek(), "Expect expression.");
     }
 
     // Check if current token has any of the given types/
