@@ -43,6 +43,7 @@ public class Parser {
     // function -> IDENTIFIER "(" parameters? ")" block ;
     private Stmt.Function function(String kind) {
         Token name = consume(IDENTIFIER, "Expect " + kind + " name.");
+        consume(LEFT_PAREN, "Expect '(' after " + kind + " name.");
         List<Token> parameters = new ArrayList<>();
         if (!check(RIGHT_PAREN)) {
             do {
@@ -107,7 +108,7 @@ public class Parser {
         consume(SEMICOLON, "Expect ';' after loop condition.");
 
         Expr increment = null;
-        if (check(RIGHT_PAREN)) {
+        if (!check(RIGHT_PAREN)) {
             increment = expression();
         }
         consume(RIGHT_PAREN, "Expect ')' after for clause.");
