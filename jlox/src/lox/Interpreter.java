@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.ArrayList;
 
 public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
-
     final Environment globals = new Environment();
     private Environment environment = new Environment();
     private static class BreakException extends RuntimeException {}
