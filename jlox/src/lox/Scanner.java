@@ -83,6 +83,8 @@ public class Scanner {
                 if (match('/')) {
                     // A comment goes until the end of the line.
                     while (peek() != '\n' && !isAtEnd()) advance();
+                } else if (match('*')) {
+                    skipBlockComment();
                 } else {
                     addToken(SLASH);
                 }
@@ -162,6 +164,33 @@ public class Scanner {
 
         current++;
         return true;
+    }
+
+    private void skipBlockComment() {
+        int nesting = 1;
+        while (nesting > 0) {
+            if (peek() == '\0') {
+                Lox.error(line, "Unterminated block comment.");
+                return;
+            }
+
+            if (peek() == '/' && peekNext() == '*') {
+                advance();
+                advance();
+                nesting++;
+                continue;
+            }
+
+            if (peek() == '*' && peekNext() == '/') {
+                advance();
+                advance();
+                nesting--;
+                continue;
+            }
+
+            // Regular comment
+            advance();
+        }
     }
 
     private char peek() {
